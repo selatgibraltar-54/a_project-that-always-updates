@@ -1,0 +1,5 @@
+{
+  "summary": "Pembaruan spesifikasi game 'Card' (com.apksafe.cardgame) tanpa akun palsu/dummy dan tanpa Firebase. Menggunakan arsitektur Real P2P LAN/Wi-Fi/Hotspot socket discovery (UDP 8988 & TCP 8989), isolasi anti-same-device, sistem timer AFK 4 menit, dan dialog kemenangan khusus.",
+  "updatedAt": "2026-11-02T22:49:44.436228836Z",
+  "userFacing": true
+}

@@ -638,10 +638,10 @@ fun GameScreen(
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(
-                                        text = "ini lebih seru dari pada judi mainini aja ok?",
+                                        text = "Kamu menang, Selamat!",
                                         color = Color.White,
                                         fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 14.sp,
+                                        fontSize = 16.sp,
                                         textAlign = TextAlign.Center
                                     )
                                 }

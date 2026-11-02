@@ -2,12 +2,9 @@ package com.apksafe.cardgame.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,23 +15,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.DeviceUnknown
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.NetworkCheck
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.SignalWifi4Bar
+import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.SignalWifiBad
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.SportsKabaddi
@@ -51,9 +48,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -67,8 +67,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -76,7 +79,9 @@ import com.apksafe.cardgame.data.db.UserEntity
 import com.apksafe.cardgame.data.network.ConnectionStatus
 import com.apksafe.cardgame.data.network.DeviceUtils
 import com.apksafe.cardgame.data.network.NetworkMonitor
-import com.apksafe.cardgame.ui.theme.AfkCritical
+import com.apksafe.cardgame.data.network.p2p.NetworkPlayer
+import com.apksafe.cardgame.data.network.p2p.P2PConnectionState
+import com.apksafe.cardgame.data.network.p2p.P2PNetworkManager
 import com.apksafe.cardgame.ui.theme.AfkNormal
 import com.apksafe.cardgame.ui.theme.AfkWarning
 import com.apksafe.cardgame.ui.theme.GoldPrimary
@@ -87,14 +92,6 @@ import com.apksafe.cardgame.ui.theme.SurfaceDark
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/**
- * Game Lobby UI component using Compose that:
- * 1. Shows current account status (level, XP progress, coins, win rate, local security)
- * 2. Checks active WiFi or Mobile Data connection
- * 3. Enforces rule: Cannot use an account created on the same device
- * 4. Lists & discovers available players who are NOT on this device
- * 5. Provides a prominent 'Start Battle' button
- */
 @Composable
 fun GameLobbyComponent(
     currentUser: UserEntity,
@@ -108,14 +105,32 @@ fun GameLobbyComponent(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
     val thisDeviceId = remember { DeviceUtils.getThisDeviceId(context) }
+    val localIp = remember { DeviceUtils.getLocalIpAddress() }
 
-    // Observe WiFi / Mobile Data
+    val p2pManager = remember { P2PNetworkManager.getInstance(context) }
+    val discoveredNetworkPlayers by p2pManager.discoveredPlayers.collectAsState()
+    val p2pConnectionState by p2pManager.connectionState.collectAsState()
+
+    // Start network discovery on active screen
+    DisposableEffect(currentUser) {
+        p2pManager.startDiscovery(currentUser)
+        onDispose {
+            // keep discovery running or clean up
+        }
+    }
+
+    // Live WiFi / Mobile Data
     var connectionStatus by remember { mutableStateOf(NetworkMonitor.getCurrentStatus(context)) }
-    var isSearchingExternalPlayers by remember { mutableStateOf(false) }
-    var searchFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    var isScanning by remember { mutableStateOf(false) }
+    var scanFeedback by remember { mutableStateOf<String?>(null) }
     var sameDeviceWarning by remember { mutableStateOf<String?>(null) }
+
+    // Direct IP join input
+    var hostIpInput by remember { mutableStateOf("") }
+    var isJoiningIp by remember { mutableStateOf(false) }
 
     val hasInternet = connectionStatus == ConnectionStatus.WIFI || connectionStatus == ConnectionStatus.MOBILE_DATA
 
@@ -124,15 +139,9 @@ fun GameLobbyComponent(
     val xpInLevel = currentUser.xp % 100
     val xpProgress = (xpInLevel / 100f).coerceIn(0f, 1f)
 
-    // Separate accounts into:
-    // 1. External non-device users (allowed for multiplayer matchmaking)
-    // 2. Same-device accounts (disallowed by rule)
-    val externalPlayers = availablePlayers.filter {
-        it.id != currentUser.id && (it.originDeviceId.isEmpty() || it.originDeviceId != thisDeviceId)
-    }
-
+    // Other accounts physically registered on this same device (Disallowed for battle)
     val sameDevicePlayers = availablePlayers.filter {
-        it.id != currentUser.id && it.originDeviceId.isNotEmpty() && it.originDeviceId == thisDeviceId
+        it.id != currentUser.id && (it.originDeviceId.isEmpty() || it.originDeviceId == thisDeviceId)
     }
 
     Column(
@@ -142,7 +151,7 @@ fun GameLobbyComponent(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // ==========================================
-        // 0. NETWORK STATUS BANNER (WiFi / Mobile Data)
+        // 0. LIVE NETWORK STATUS (WIFI / MOBILE DATA / HOTSPOT)
         // ==========================================
         Surface(
             modifier = Modifier
@@ -177,26 +186,26 @@ fun GameLobbyComponent(
                     Column {
                         Text(
                             text = when (connectionStatus) {
-                                ConnectionStatus.WIFI -> "Terhubung via WiFi (Online)"
-                                ConnectionStatus.MOBILE_DATA -> "Terhubung via Data Seluler (Online)"
-                                ConnectionStatus.OFFLINE -> "⚠️ Tidak Ada Koneksi WiFi / Data Seluler"
+                                ConnectionStatus.WIFI -> "Terhubung via WiFi (IP: $localIp)"
+                                ConnectionStatus.MOBILE_DATA -> "Terhubung via Data Seluler / Hotspot"
+                                ConnectionStatus.OFFLINE -> "⚠️ Offline (Nyalakan WiFi / Data / Hotspot)"
                             },
                             color = if (hasInternet) AfkNormal else HealthRed,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
                         )
                         Text(
-                            text = if (hasInternet) "Siap mencari pemain dari luar perangkat ini" else "Mode ini butuh WiFi atau Data Seluler aktif",
+                            text = if (hasInternet) "Multiplayer P2P LAN aktif (Tanpa Firebase)" else "Mode ini butuh WiFi atau Data Seluler aktif",
                             color = Color.White.copy(alpha = 0.7f),
                             fontSize = 10.sp
                         )
                     }
                 }
 
-                // Refresh network check
                 IconButton(
                     onClick = {
                         connectionStatus = NetworkMonitor.getCurrentStatus(context)
+                        p2pManager.broadcastBeacon(currentUser, isHost = false)
                     },
                     modifier = Modifier.size(32.dp)
                 ) {
@@ -211,7 +220,7 @@ fun GameLobbyComponent(
         }
 
         // ==========================================
-        // 1. CURRENT ACCOUNT STATUS CARD
+        // 1. CURRENT USER STATUS CARD
         // ==========================================
         Card(
             modifier = Modifier
@@ -230,7 +239,6 @@ fun GameLobbyComponent(
                     )
                     .padding(14.dp)
             ) {
-                // Header: Profile, Name, Status Pill & Switch Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -273,14 +281,13 @@ fun GameLobbyComponent(
 
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Perangkat Saya: ${thisDeviceId.take(12)}",
+                                text = "Device ID: ${thisDeviceId.take(12)} • IP: $localIp",
                                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 11.sp),
                                 color = Color.White.copy(alpha = 0.6f)
                             )
                         }
                     }
 
-                    // Ganti Akun Button
                     Surface(
                         onClick = onSwitchAccount,
                         shape = RoundedCornerShape(8.dp),
@@ -309,7 +316,7 @@ fun GameLobbyComponent(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // XP Progress Bar
                 Column {
@@ -343,7 +350,7 @@ fun GameLobbyComponent(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Stats Row: Coins, Wins, Losses, Win Rate
+                // Stats Row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -353,62 +360,29 @@ fun GameLobbyComponent(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Coins
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.MonetizationOn,
-                            contentDescription = "Koin",
-                            tint = GoldPrimary,
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Icon(Icons.Filled.MonetizationOn, contentDescription = null, tint = GoldPrimary, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "${currentUser.coins}",
-                            color = GoldPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
+                        Text(text = "${currentUser.coins}", color = GoldPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
 
-                    // Win / Loss
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "W: ${currentUser.wins}",
-                            color = AfkNormal,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
+                        Text(text = "W: ${currentUser.wins}", color = AfkNormal, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "L: ${currentUser.losses}",
-                            color = HealthRed,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
+                        Text(text = "L: ${currentUser.losses}", color = HealthRed, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
 
-                    // Win Rate %
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.MilitaryTech,
-                            contentDescription = null,
-                            tint = ShieldBlue,
-                            modifier = Modifier.size(14.dp)
-                        )
+                        Icon(Icons.Filled.MilitaryTech, contentDescription = null, tint = ShieldBlue, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = "$winRate% Win Rate",
-                            color = ShieldBlue,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
+                        Text(text = "$winRate% Win Rate", color = ShieldBlue, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
                 }
             }
         }
 
         // ==========================================
-        // 2. DISCOVERY & AVAILABLE PLAYERS
+        // 2. DISCOVERED NETWORK PLAYERS (REAL P2P, NO FAKE ACCOUNTS, NO FIREBASE)
         // ==========================================
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -418,38 +392,42 @@ fun GameLobbyComponent(
             ) {
                 Column {
                     Text(
-                        text = "Pemain Luar Perangkat (Network)",
+                        text = "Pemain Luar Perangkat (Network P2P)",
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Dilarang memakai akun dari perangkat yang sama",
+                        text = "Real peer via WiFi/Hotspot • Dilarang akun dari perangkat yang sama",
                         style = MaterialTheme.typography.bodyMedium.copy(fontSize = 10.sp),
                         color = AfkWarning
                     )
                 }
 
-                // Search online button
                 OutlinedButton(
                     onClick = {
                         if (!hasInternet) {
-                            searchFeedbackMessage = "Nyalakan WiFi atau Data Seluler untuk memindai!"
+                            scanFeedback = "Nyalakan WiFi / Hotspot / Data untuk memindai!"
                             return@OutlinedButton
                         }
                         scope.launch {
-                            isSearchingExternalPlayers = true
-                            searchFeedbackMessage = null
+                            isScanning = true
+                            scanFeedback = null
+                            p2pManager.broadcastBeacon(currentUser, isHost = false)
                             delay(1200)
-                            isSearchingExternalPlayers = false
-                            searchFeedbackMessage = "Berhasil menemukan ${externalPlayers.size} pemain di luar perangkat ini!"
+                            isScanning = false
+                            scanFeedback = if (discoveredNetworkPlayers.isEmpty()) {
+                                "Pencarian selesai. Belum ada HP lain yang terdeteksi di jaringan ini."
+                            } else {
+                                "Ditemukan ${discoveredNetworkPlayers.size} pemain di luar perangkat ini!"
+                            }
                         }
                     },
                     shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(1.dp, GoldPrimary.copy(alpha = 0.5f)),
                     modifier = Modifier.testTag("scan_network_rivals_btn")
                 ) {
-                    if (isSearchingExternalPlayers) {
+                    if (isScanning) {
                         CircularProgressIndicator(modifier = Modifier.size(14.dp), color = GoldPrimary, strokeWidth = 2.dp)
                     } else {
                         Icon(Icons.Filled.NetworkCheck, contentDescription = null, tint = GoldPrimary, modifier = Modifier.size(14.dp))
@@ -459,15 +437,9 @@ fun GameLobbyComponent(
                 }
             }
 
-            // Feedback / Alert messages
-            searchFeedbackMessage?.let { msg ->
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = msg,
-                    color = AfkNormal,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+            scanFeedback?.let { msg ->
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = msg, color = if (discoveredNetworkPlayers.isNotEmpty()) AfkNormal else Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
             }
 
             sameDeviceWarning?.let { warn ->
@@ -477,10 +449,7 @@ fun GameLobbyComponent(
                     shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(1.dp, HealthRed)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.Warning, contentDescription = null, tint = HealthRed, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(text = warn, color = HealthRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -488,14 +457,14 @@ fun GameLobbyComponent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // AI Practice Bot
-            AvailablePlayerItem(
+            DiscoveredPlayerCard(
                 name = "AI Bot (Training Mode)",
-                subtitle = "Latihan Mandiri • Server Bot",
+                subtitle = "Latihan Mandiri • Server Bot Offline",
                 avatarId = "wizard",
-                deviceLabel = "Server Cloud AI",
+                deviceBadge = "Solo Practice",
                 isBot = true,
                 isAllowed = true,
                 isSelected = isBotSelected,
@@ -507,8 +476,8 @@ fun GameLobbyComponent(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Non-Device External Players
-            if (externalPlayers.isEmpty()) {
+            // REAL DISCOVERED EXTERNAL PLAYERS
+            if (discoveredNetworkPlayers.isEmpty()) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
@@ -519,36 +488,46 @@ fun GameLobbyComponent(
                         modifier = Modifier.padding(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        Icon(Icons.Filled.Podcasts, contentDescription = null, tint = Color.White.copy(alpha = 0.3f), modifier = Modifier.size(28.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Tekan 'Pindai Lawan' untuk mencari pemain dari perangkat lain via WiFi / Data.",
-                            color = Color.White.copy(alpha = 0.6f),
+                            text = "Belum ada pemain lain yang terdeteksi di jaringan WiFi / Hotspot ini.",
+                            color = Color.White.copy(alpha = 0.7f),
                             fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Buka game 'Card' di HP lain dalam jaringan yang sama untuk deteksi otomatis, atau gunakan 'Host Room' di bawah!",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 10.sp,
                             textAlign = TextAlign.Center
                         )
                     }
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    externalPlayers.forEach { player ->
-                        val isSelected = !isBotSelected && selectedOpponent?.id == player.id
-                        AvailablePlayerItem(
+                    discoveredNetworkPlayers.forEach { player ->
+                        val isSelected = !isBotSelected && selectedOpponent?.username == player.username
+                        DiscoveredPlayerCard(
                             name = player.username,
-                            subtitle = "Level ${player.level} • Menang: ${player.wins} • ${player.coins} Koin",
+                            subtitle = "Level ${player.level} • Menang: ${player.wins} • IP: ${player.ipAddress}",
                             avatarId = player.avatar,
-                            deviceLabel = "Device: ${player.originDeviceId}",
+                            deviceBadge = if (player.isHost) "HOST ROOM" else "ONLINE (LAN)",
                             isBot = false,
                             isAllowed = true,
                             isSelected = isSelected,
                             onClick = {
                                 sameDeviceWarning = null
-                                onSelectOpponent(player)
+                                onSelectOpponent(player.toUserEntity())
                             }
                         )
                     }
                 }
             }
 
-            // Same Device Accounts List (Greyed out / Disallowed by the requested rule)
+            // SAME DEVICE ACCOUNTS (BLOCKED)
             if (sameDevicePlayers.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
@@ -559,16 +538,16 @@ fun GameLobbyComponent(
                 Spacer(modifier = Modifier.height(4.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     sameDevicePlayers.forEach { sameDevPlayer ->
-                        AvailablePlayerItem(
+                        DiscoveredPlayerCard(
                             name = sameDevPlayer.username,
-                            subtitle = "Akun Lokal Perangkat Ini",
+                            subtitle = "Akun lokal pada perangkat yang sama",
                             avatarId = sameDevPlayer.avatar,
-                            deviceLabel = "Perangkat Sama (Diblokir)",
+                            deviceBadge = "SAME DEVICE (BLOCKED)",
                             isBot = false,
                             isAllowed = false,
                             isSelected = false,
                             onClick = {
-                                sameDeviceWarning = "❌ Tidak diizinkan! Aturan mewajibkan mencari pemain dari luar perangkat ini, bukan akun dari perangkat yang sama."
+                                sameDeviceWarning = "❌ Dilarang! Tidak boleh bertanding menggunakan akun dari perangkat yang sama. Hubungkan perangkat lain lewat WiFi / Hotspot."
                             }
                         )
                     }
@@ -577,7 +556,176 @@ fun GameLobbyComponent(
         }
 
         // ==========================================
-        // 3. MATCHUP PREVIEW & 'START BATTLE' BUTTON
+        // 3. HOST ROOM & DIRECT IP CONNECT (NO FIREBASE)
+        // ==========================================
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            border = BorderStroke(1.dp, ShieldBlue.copy(alpha = 0.4f))
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Router, contentDescription = null, tint = ShieldBlue, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Koneksi Langsung (Host & Gabung Room via IP)",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                when (val state = p2pConnectionState) {
+                    is P2PConnectionState.Hosting -> {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = AfkNormal.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, AfkNormal)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp).fillMaxWidth()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = AfkNormal, strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Room Aktif! Menunggu lawan terhubung...",
+                                        color = AfkNormal,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Bagikan IP ke lawan: ${state.localIp}:${state.port}",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                OutlinedButton(
+                                    onClick = { p2pManager.disconnect() },
+                                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, HealthRed)
+                                ) {
+                                    Text("Batalkan Host Room", color = HealthRed, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                    is P2PConnectionState.Connected -> {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = AfkNormal.copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, AfkNormal)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.Check, contentDescription = null, tint = AfkNormal, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "Terhubung dengan ${state.opponent.username}!",
+                                        color = AfkNormal,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                    Text(
+                                        text = "Lawan di IP: ${state.opponent.ipAddress} (Beda Perangkat)",
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Host Room Button
+                            Button(
+                                onClick = {
+                                    p2pManager.hostRoom(currentUser) { opp ->
+                                        onSelectOpponent(opp.toUserEntity())
+                                    }
+                                },
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ShieldBlue)
+                            ) {
+                                Text("Buat Room (Host)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Join via IP Input
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = hostIpInput,
+                                onValueChange = { hostIpInput = it.trim() },
+                                placeholder = { Text("Ketik IP Host (misal 192.168.1.5)", fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f)) },
+                                modifier = Modifier.weight(1f).height(50.dp),
+                                textStyle = MaterialTheme.typography.bodySmall.copy(color = Color.White, fontSize = 11.sp),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = { keyboardController?.hide() }),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ShieldBlue,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                                    focusedContainerColor = Color.Black.copy(alpha = 0.3f),
+                                    unfocusedContainerColor = Color.Black.copy(alpha = 0.3f)
+                                )
+                            )
+
+                            Button(
+                                onClick = {
+                                    if (hostIpInput.isNotEmpty()) {
+                                        keyboardController?.hide()
+                                        isJoiningIp = true
+                                        p2pManager.joinRoom(
+                                            currentUser = currentUser,
+                                            hostIp = hostIpInput,
+                                            onConnected = { opp ->
+                                                isJoiningIp = false
+                                                onSelectOpponent(opp.toUserEntity())
+                                            },
+                                            onError = { err ->
+                                                isJoiningIp = false
+                                                sameDeviceWarning = err
+                                            }
+                                        )
+                                    }
+                                },
+                                enabled = hostIpInput.isNotEmpty() && !isJoiningIp,
+                                modifier = Modifier.height(48.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = Color.Black)
+                            ) {
+                                if (isJoiningIp) {
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.Black, strokeWidth = 2.dp)
+                                } else {
+                                    Text("Gabung", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ==========================================
+        // 4. MATCHUP PREVIEW & 'START BATTLE' BUTTON
         // ==========================================
         val opponentName = when {
             isBotSelected -> "AI Bot (Training)"
@@ -585,7 +733,7 @@ fun GameLobbyComponent(
             else -> "Belum Dipilih"
         }
 
-        val canStart = (isBotSelected || (hasInternet && selectedOpponent != null && selectedOpponent.originDeviceId != thisDeviceId))
+        val canStart = isBotSelected || (hasInternet && selectedOpponent != null && selectedOpponent.originDeviceId != thisDeviceId)
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -597,30 +745,19 @@ fun GameLobbyComponent(
                 modifier = Modifier.padding(14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Versus Banner
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // P1 Side
+                    // P1
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         AvatarCircle(avatarId = currentUser.avatar, size = 36.dp)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = currentUser.username,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
-                        Text(
-                            text = "Perangkat Anda",
-                            color = Color.White.copy(alpha = 0.5f),
-                            fontSize = 9.sp
-                        )
+                        Text(text = currentUser.username, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text(text = "Perangkat Anda", color = Color.White.copy(alpha = 0.5f), fontSize = 9.sp)
                     }
 
-                    // VS Badge
                     Box(
                         modifier = Modifier
                             .size(34.dp)
@@ -629,29 +766,19 @@ fun GameLobbyComponent(
                             .border(1.dp, GoldPrimary, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "VS",
-                            color = GoldPrimary,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 12.sp
-                        )
+                        Text(text = "VS", color = GoldPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
                     }
 
-                    // P2 Side
+                    // P2
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         AvatarCircle(
                             avatarId = if (isBotSelected) "wizard" else (selectedOpponent?.avatar ?: "phoenix"),
                             size = 36.dp
                         )
                         Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = opponentName, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         Text(
-                            text = opponentName,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
-                        Text(
-                            text = if (isBotSelected) "Server Bot" else "Luar Perangkat",
+                            text = if (isBotSelected) "Solo Bot" else "Luar Perangkat (P2P)",
                             color = if (isBotSelected) ShieldBlue else AfkNormal,
                             fontSize = 9.sp
                         )
@@ -660,7 +787,6 @@ fun GameLobbyComponent(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // THE PROMINENT 'START BATTLE' BUTTON
                 Button(
                     onClick = {
                         if (!isBotSelected && !hasInternet) {
@@ -691,11 +817,7 @@ fun GameLobbyComponent(
                     shape = RoundedCornerShape(12.dp),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.SportsKabaddi,
-                        contentDescription = "Mulai Bertanding",
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Icon(imageVector = Icons.Filled.SportsKabaddi, contentDescription = "Mulai Bertanding", modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = if (!hasInternet && !isBotSelected) "BUTUH WIFI / DATA SELULER" else "START BATTLE",
@@ -720,11 +842,11 @@ fun GameLobbyComponent(
 }
 
 @Composable
-private fun AvailablePlayerItem(
+private fun DiscoveredPlayerCard(
     name: String,
     subtitle: String,
     avatarId: String,
-    deviceLabel: String,
+    deviceBadge: String,
     isBot: Boolean,
     isAllowed: Boolean,
     isSelected: Boolean,
@@ -754,27 +876,17 @@ private fun AvailablePlayerItem(
             .testTag("available_player_${name.replace(" ", "_")}")
     ) {
         Row(
-            modifier = Modifier
-                .padding(10.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(10.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (isBot) {
                     Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(ShieldBlue.copy(alpha = 0.2f)),
+                        modifier = Modifier.size(38.dp).clip(CircleShape).background(ShieldBlue.copy(alpha = 0.2f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.SmartToy,
-                            contentDescription = null,
-                            tint = ShieldBlue,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Icon(Icons.Filled.SmartToy, contentDescription = null, tint = ShieldBlue, modifier = Modifier.size(20.dp))
                     }
                 } else {
                     AvatarCircle(avatarId = avatarId, size = 38.dp)
@@ -804,7 +916,7 @@ private fun AvailablePlayerItem(
                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                         ) {
                             Text(
-                                text = if (!isAllowed) "BLOCKED" else if (isBot) "BOT" else "ONLINE",
+                                text = deviceBadge,
                                 color = if (!isAllowed) HealthRed else if (isBot) ShieldBlue else AfkNormal,
                                 fontSize = 8.sp,
                                 fontWeight = FontWeight.Bold
@@ -814,21 +926,15 @@ private fun AvailablePlayerItem(
 
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "$subtitle • $deviceLabel",
+                        text = subtitle,
                         color = if (isAllowed) Color.White.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.3f),
                         fontSize = 10.sp
                     )
                 }
             }
 
-            // Radio/Selection Icon or Blocked Icon
             if (!isAllowed) {
-                Icon(
-                    imageVector = Icons.Filled.Block,
-                    contentDescription = "Dilarang",
-                    tint = HealthRed.copy(alpha = 0.6f),
-                    modifier = Modifier.size(20.dp)
-                )
+                Icon(Icons.Filled.Block, contentDescription = "Dilarang", tint = HealthRed.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
             } else {
                 Box(
                     modifier = Modifier
@@ -839,12 +945,7 @@ private fun AvailablePlayerItem(
                     contentAlignment = Alignment.Center
                 ) {
                     if (isSelected) {
-                        Icon(
-                            imageVector = Icons.Filled.Check,
-                            contentDescription = "Terpilih",
-                            tint = Color.Black,
-                            modifier = Modifier.size(14.dp)
-                        )
+                        Icon(Icons.Filled.Check, contentDescription = "Terpilih", tint = Color.Black, modifier = Modifier.size(14.dp))
                     }
                 }
             }

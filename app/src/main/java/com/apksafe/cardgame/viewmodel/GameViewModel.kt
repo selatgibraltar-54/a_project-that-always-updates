@@ -466,7 +466,7 @@ class GameViewModel(private val repository: UserRepository) : ViewModel() {
         val winLogs = if (!winner.isBot) {
             listOf(
                 "🏆 ${winner.name} Menang! ($reason)",
-                "💬 ini lebih seru dari pada judi mainini aja ok?"
+                "💬 Kamu menang, Selamat!"
             )
         } else {
             listOf("🏆 ${winner.name} Menang! ($reason)")

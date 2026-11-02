@@ -8,37 +8,48 @@ Dokumentasi resmi dan panduan permainan untuk game Android **Card** (`com.apksaf
 * **Nama Aplikasi**: Card
 * **Package ID**: `com.apksafe.cardgame`
 * **Arsitektur**: Kotlin, Jetpack Compose, Room Database, Material Design 3
-* **Model Jaringan**: Network-Aware Multiplayer & Local Offline Secure Auth
+* **Model Jaringan**: **Real P2P LAN/Wi-Fi Socket Multiplayer** (Tanpa Firebase & Tanpa Akun Dummy)
 
 ---
 
-## 🛡️ 1. Sistem Akun Lokal Aman (Offline Security)
-Game menggunakan sistem autentikasi lokal yang tersimpan secara terenkripsi di penyimpanan aman perangkat:
+## 🛡️ 1. Sistem Akun Lokal Nyata (Bukan Dummy / Palsu)
+Game menggunakan akun lokal nyata yang didaftarkan langsung oleh pengguna di perangkat:
 
 1. **Hashing Kata Sandi**:
    * Setiap akun baru menghasilkan *cryptographic random salt* (16 byte).
    * Password di-hash menggunakan algoritma **SHA-256** bersama salt (`SHA-256(password + salt)`).
    * Password teks mentah tidak pernah disimpan di database.
-2. **Multi-Akun / Profile Switcher**:
-   * Pengguna dapat mendaftarkan beberapa profil di perangkat yang sama.
-   * Riwayat kemenangan (*Wins*), kekalahan (*Losses*), dan level tersimpan di database lokal Room (`CardDatabase`).
+2. **Tanpa Akun Palsu (Zero Mock/Fake Accounts)**:
+   * Database **tidak** menyuntikkan profil bot atau akun fiktif.
+   * Hanya akun riil yang didaftarkan oleh pengguna yang tersimpan di database lokal Room (`CardDatabase`).
+   * Riwayat kemenangan (*Wins*), kekalahan (*Losses*), dan level tersimpan secara persisten di penyimpanan aman lokal perangkat.
 
 ---
 
-## 🌐 2. Aturan Multiplayer & Isolasi Perangkat
+## 🌐 2. Multiplayer P2P Asli & Tanpa Firebase (Wi-Fi / Hotspot / Data)
 
 ### A. Larangan Akun dari Perangkat yang Sama
 * Setiap akun yang didaftarkan ditandai dengan **Device ID** unik (`originDeviceId`).
-* **Hotseat / Multiplayer Constraint**: Akun yang dibuat di perangkat fisik yang sama **tidak dapat** saling bertanding (`BLOCKED (Same Device)`). Hal ini mencegah kecurangan atau manipulasi skor lokal.
-* Menu **Game Lobby** memindai dan memfilter pemain: hanya profil dari perangkat lain yang terdeteksi secara eksternal (`ONLINE`) yang dapat diajak bertanding (*Start Battle*).
+* **Hotseat / Multiplayer Constraint**: Akun yang dibuat di perangkat fisik yang sama **dilarang saling bertanding** (`BLOCKED (Same Device)`). Hal ini memastikan pemain harus bertanding melawan perangkat lain.
 
-### B. Persyaratan Koneksi Internet (WiFi / Mobile Data)
-* Komponen **NetworkMonitor** memantau status jaringan secara real-time via Android `ConnectivityManager`.
-* Indikator status jaringan ditampilkan di bagian atas Game Lobby:
-  * 🟢 **WiFi Connected**
-  * 🔵 **Mobile Data (Cellular) Active**
+### B. Real P2P Discovery & Socket (Bebas Firebase)
+Untuk menghubungkan dua perangkat nyata di dunia nyata tanpa bergantung pada layanan cloud pihak ketiga seperti Firebase:
+1. **UDP Broadcast Auto-Discovery (Port 8988)**:
+   * Saat berada di Game Lobby, perangkat menyiarkan paket beacon real-time berisi username, level, avatar, dan IP perangkat.
+   * Perangkat lain yang berada di jaringan Wi-Fi atau Hotspot yang sama secara otomatis mendeteksi kehadiran pemain tersebut.
+2. **Koneksi Langsung (Host & Gabung via IP)**:
+   * Pemain dapat memilih **Buat Room (Host)**, yang membuka TCP ServerSocket pada port `8989` dan menampilkan alamat IP lokal (misal `192.168.1.15:8989` atau `192.168.43.1` saat tethering).
+   * Pemain di perangkat lain dapat langsung mengetikkan IP Host untuk terhubung dan memulai pertandingan.
+3. **Validasi Handshake Anti-Kecurangan**:
+   * Saat terhubung, kedua perangkat bertukar ID perangkat fisik.
+   * Jika terdeteksi koneksi berasal dari perangkat yang sama, server otomatis menolak koneksi (`REJECT: SAME_DEVICE_FORBIDDEN`).
+
+### C. Persyaratan Koneksi Jaringan
+* Status koneksi jaringan terpantau secara langsung:
+  * 🟢 **WiFi Connected (IP Lokal Ditampilkan)**
+  * 🔵 **Mobile Data / Hotspot Active**
   * 🔴 **Offline / Disconnected**
-* Tombol **Pindai Rival** dan **Start Battle** secara otomatis dinonaktifkan jika perangkat tidak mendeteksi koneksi WiFi atau Data Seluler aktif.
+* Tombol **Pindai Lawan**, **Buat Room**, dan **Start Battle** memerlukan koneksi aktif agar dua perangkat dapat berkomunikasi.
 
 ---
 
@@ -57,7 +68,7 @@ Untuk menjaga alur permainan tetap adil dan dinamis:
 ## ⚔️ 4. Sistem Pertarungan & 24 Kartu Elemental
 
 ### Mekanika Dasar:
-* **Health Points (HP)**: Setiap pemain memulai dengan **100 HP**.
+* **Health Points (HP)**: Setiap pemain memulai dengan **30 HP**.
 * **Mana (Energi)**: Bertambah 1 setiap ronde (maksimal 10).
 * **Shield**: Menahan damage serangan sebelum mengurangi HP.
 
@@ -68,47 +79,19 @@ Untuk menjaga alur permainan tetap adil dan dinamis:
 4. ⚡ **Lightning (Petir)** — Unggul vs Water (+30% bonus damage)
 5. 🌌 **Void (Kekosongan)** — Memberikan damage murni menembus shield
 
-### Daftar Koleksi 24 Kartu:
-| No | Nama Kartu | Elemen | Biaya Mana | Efek |
-|:---|:---|:---|:---:|:---|
-| 1 | Flame Burst | Fire | 2 | 14 Damage |
-| 2 | Inferno Dragon | Fire | 5 | 28 Damage + Burn 4/turn |
-| 3 | Lava Shield | Fire | 3 | +18 Shield |
-| 4 | Phoenix Flare | Fire | 4 | 20 Damage & Heal 8 HP |
-| 5 | Magma Golem | Fire | 6 | 32 Damage |
-| 6 | Aqua Splash | Water | 2 | 12 Damage & Kurangi 1 Mana lawan |
-| 7 | Tidal Wave | Water | 4 | 22 Damage |
-| 8 | Frozen Barrier | Water | 3 | +22 Shield |
-| 9 | Healing Springs | Water | 3 | Heal 20 HP |
-| 10 | Leviathan Wrath | Water | 6 | 30 Damage & +10 Shield |
-| 11 | Vine Whip | Nature | 2 | 13 Damage |
-| 12 | Ancient Treant | Nature | 4 | 18 Damage & +12 Shield |
-| 13 | Bark Armor | Nature | 2 | +16 Shield |
-| 14 | Spore Cloud | Nature | 3 | Racun 6 damage selama 3 turn |
-| 15 | Gaia Blessing | Nature | 5 | Heal 25 HP & +10 Shield |
-| 16 | Spark Jolt | Lightning | 1 | 8 Damage |
-| 17 | Thunder Strike | Lightning | 3 | 20 Damage |
-| 18 | Storm Surge | Lightning | 4 | 24 Damage |
-| 19 | Overcharge | Lightning | 2 | Tambah 2 Mana untuk turn ini |
-| 20 | Plasma Cannon | Lightning | 6 | 35 Massive Damage |
-| 21 | Shadow Dagger | Void | 2 | 12 Pure Damage (abaikan Shield) |
-| 22 | Abyssal Rift | Void | 4 | 22 Pure Damage |
-| 23 | Soul Leech | Void | 3 | Curi 12 HP lawan menjadi HP sendiri |
-| 24 | Black Hole | Void | 7 | 40 Ultimate Damage ke lawan |
-
 ---
 
 ## 🏆 5. Pesan Kemenangan Spesial (Human Player Victory)
-Ketika seorang pemain berhasil mengalahkan lawan pemain non-bot:
+Ketika seorang pemain berhasil mengalahkan pemain non-bot:
 * Game menampilkan dialog kemenangan perayaan khusus.
-* Pesan resmi yang ditampilkan secara mencolok di layar:
-  > **"ini lebih seru dari pada judi mainini aja ok?"**
+* Pesan resmi yang ditampilkan secara mencolok di layar dan log pertandingan:
+  > **"Kamu menang, Selamat!"**
 
 ---
 
-## 🎮 6. Panduan Singkat Memulai Permainan
-1. **Buat Akun**: Buka aplikasi dan masukkan nama pengguna serta kata sandi di layar *Secure Local Authentication*.
-2. **Masuk ke Game Lobby**: Pastikan WiFi atau Data Seluler aktif.
-3. **Pilih Lawan Non-Device**: Pilih salah satu pemain eksternal di daftar pemain yang berstatus *ONLINE*.
-4. **Mulai Pertandingan**: Tekan tombol **Start Battle**.
-5. **Mainkan Kartu Anda**: Perhatikan biaya Mana dan batas waktu 4 menit agar giliran tidak terlewat otomatis.
+## 🎮 6. Panduan Singkat Bermain 2 Perangkat (Multiplayer Nyata)
+1. Hubungkan kedua HP ke **Wi-Fi yang sama** ATAU nyalakan **Hotspot Pribadi (Tethering)** di salah satu HP dan hubungkan HP lainnya.
+2. Buka game **Card** di kedua HP dan login dengan akun masing-masing.
+3. Di HP 1: Masuk ke Game Lobby, tekan **Pindai Lawan** atau **Buat Room (Host)**.
+4. Di HP 2: Tekan **Pindai Lawan** (profil HP 1 akan otomatis muncul) ATAU ketik IP HP 1 pada kolom **Gabung via IP**.
+5. Tekan **Start Battle** untuk memulai pertarungan langsung antar perangkat nyata!

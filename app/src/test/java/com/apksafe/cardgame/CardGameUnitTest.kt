@@ -30,9 +30,9 @@ class CardGameUnitTest {
 
     @Test
     fun testVictoryMessageText() {
-        val expectedMessage = "ini lebih seru dari pada judi mainini aja ok?"
-        assertTrue(expectedMessage.contains("judi"))
-        assertTrue(expectedMessage.contains("seru"))
+        val expectedMessage = "Kamu menang, Selamat!"
+        assertTrue(expectedMessage.contains("menang"))
+        assertTrue(expectedMessage.contains("Selamat"))
     }
 
     @Test

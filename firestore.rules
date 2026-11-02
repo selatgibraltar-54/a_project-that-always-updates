@@ -1,0 +1,111 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 60 &&
+             (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 500)) &&
+             data.wins is int && data.wins >= 0 &&
+             data.losses is int && data.losses >= 0 &&
+             data.level is int && data.level >= 1 &&
+             data.deviceId is string && data.deviceId.size() >= 1 && data.deviceId.size() <= 128 &&
+             data.isOnline is bool;
+    }
+
+    function isValidGameMatch(data) {
+      return data.matchId is string && data.matchId.size() <= 128 &&
+             data.hostUserId is string && data.hostUserId.size() <= 128 &&
+             data.hostDisplayName is string && data.hostDisplayName.size() <= 60 &&
+             data.hostDeviceId is string && data.hostDeviceId.size() <= 128 &&
+             (!('guestUserId' in data) || data.guestUserId == null || (data.guestUserId is string && data.guestUserId.size() <= 128)) &&
+             (!('guestDisplayName' in data) || data.guestDisplayName == null || (data.guestDisplayName is string && data.guestDisplayName.size() <= 60)) &&
+             (!('guestDeviceId' in data) || data.guestDeviceId == null || (data.guestDeviceId is string && data.guestDeviceId.size() <= 128)) &&
+             data.status in ['waiting', 'active', 'finished', 'cancelled'] &&
+             data.currentTurnUserId is string && data.currentTurnUserId.size() <= 128 &&
+             (!('winnerUserId' in data) || data.winnerUserId == null || (data.winnerUserId is string && data.winnerUserId.size() <= 128));
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'wins', 'losses', 'level', 'deviceId', 'isOnline', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'photoUrl', 'wins', 'losses', 'level', 'deviceId', 'isOnline', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoUrl', 'wins', 'losses', 'level', 'deviceId', 'isOnline', 'updatedAt']);
+
+      allow delete: if false;
+    }
+
+    match /matches/{matchId} {
+      allow get: if isSignedIn() && isValidId(matchId);
+      allow list: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+                       isValidId(matchId) &&
+                       incoming().hostUserId == request.auth.uid &&
+                       incoming().matchId == matchId &&
+                       incoming().keys().hasAll(['matchId', 'hostUserId', 'hostDisplayName', 'hostDeviceId', 'status', 'currentTurnUserId', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       isValidGameMatch(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(matchId) &&
+                       (existing().hostUserId == request.auth.uid ||
+                        (existing().guestUserId != null && existing().guestUserId == request.auth.uid) ||
+                        (existing().status == 'waiting' && incoming().guestUserId == request.auth.uid)) &&
+                       incoming().matchId == existing().matchId &&
+                       incoming().hostUserId == existing().hostUserId &&
+                       incoming().hostDeviceId == existing().hostDeviceId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       isValidGameMatch(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['guestUserId', 'guestDisplayName', 'guestDeviceId', 'status', 'currentTurnUserId', 'winnerUserId', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(matchId) && existing().hostUserId == request.auth.uid;
+    }
+  }
+}

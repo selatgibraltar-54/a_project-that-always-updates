@@ -73,7 +73,7 @@ fun LobbyScreen(
     var currentTab by remember { mutableStateOf(LobbyNavTab.ARENA) }
     var isBotSelected by remember { mutableStateOf(false) }
     var selectedPlayer2 by remember {
-        mutableStateOf<UserEntity?>(allUsers.firstOrNull { it.id != currentUser.id })
+        mutableStateOf<UserEntity?>(null)
     }
 
     Scaffold(

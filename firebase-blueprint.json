@@ -1,0 +1,147 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile in the online card game",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Auth UID of the user"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the user"
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional profile photo URL"
+        },
+        "wins": {
+          "type": "integer",
+          "description": "Number of victories"
+        },
+        "losses": {
+          "type": "integer",
+          "description": "Number of defeats"
+        },
+        "level": {
+          "type": "integer",
+          "description": "Current player level"
+        },
+        "deviceId": {
+          "type": "string",
+          "description": "Physical device ID of player"
+        },
+        "isOnline": {
+          "type": "boolean",
+          "description": "Online presence status"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Document creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Document update server timestamp"
+        }
+      },
+      "required": [
+        "userId",
+        "displayName",
+        "wins",
+        "losses",
+        "level",
+        "deviceId",
+        "isOnline",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "GameMatch": {
+      "title": "GameMatch",
+      "description": "Card game match room between two real online players",
+      "type": "object",
+      "properties": {
+        "matchId": {
+          "type": "string",
+          "description": "Unique identifier for the match"
+        },
+        "hostUserId": {
+          "type": "string",
+          "description": "Host player user ID"
+        },
+        "hostDisplayName": {
+          "type": "string",
+          "description": "Host player name"
+        },
+        "hostDeviceId": {
+          "type": "string",
+          "description": "Host physical device ID"
+        },
+        "guestUserId": {
+          "type": "string",
+          "description": "Guest player user ID"
+        },
+        "guestDisplayName": {
+          "type": "string",
+          "description": "Guest player name"
+        },
+        "guestDeviceId": {
+          "type": "string",
+          "description": "Guest physical device ID"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "waiting",
+            "active",
+            "finished",
+            "cancelled"
+          ],
+          "description": "Match status"
+        },
+        "currentTurnUserId": {
+          "type": "string",
+          "description": "User ID whose turn it is"
+        },
+        "winnerUserId": {
+          "type": "string",
+          "description": "Winner user ID if finished"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Match creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Match update server timestamp"
+        }
+      },
+      "required": [
+        "matchId",
+        "hostUserId",
+        "hostDisplayName",
+        "hostDeviceId",
+        "status",
+        "currentTurnUserId",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Real online user profiles"
+    },
+    "/matches/{matchId}": {
+      "schema": "GameMatch",
+      "description": "Multiplayer match rooms"
+    }
+  }
+}
