@@ -102,7 +102,7 @@ Untuk menjaga alur permainan tetap adil dan dinamis:
 Ketika seorang pemain berhasil mengalahkan lawan pemain non-bot:
 * Game menampilkan dialog kemenangan perayaan khusus.
 * Pesan resmi yang ditampilkan secara mencolok di layar:
-  > **"ini lebih seru dari pada judi mainini aja ok?"**
+  > **"ini lebih seru dari pada judi, main ini aja ok?"**
 
 ---
 
