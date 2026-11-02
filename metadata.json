@@ -1,0 +1,6 @@
+{
+  "name": "Card",
+  "description": "Multiplayer card battle game with secure offline accounts, profile switcher, and 4-minute AFK auto-switch.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
