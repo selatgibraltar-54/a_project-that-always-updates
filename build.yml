@@ -27,18 +27,34 @@ jobs:
           fetch-depth: 1
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: Restore debug keystore
+      - name: Setup Android SDK (API 36)
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0 platform-tools'
+
+      - name: Accept Android SDK Licenses
         run: |
-          if [ -f debug.keystore.base64 ] && [ ! -f debug.keystore ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
-            echo "debug.keystore restored from base64"
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Ensure Debug Keystore Exists
+        run: |
+          # Ensure keystore exists for signingConfigs.debugConfig
+          if [ ! -f debug.keystore ]; then
+            if [ -s debug.keystore.base64 ]; then
+              (base64 --decode debug.keystore.base64 > debug.keystore || base64 -d debug.keystore.base64 > debug.keystore) 2>/dev/null || true
+            fi
+            if [ ! -f debug.keystore ] || [ ! -s debug.keystore ]; then
+              echo "Generating debug keystore via keytool..."
+              keytool -genkeypair -v -keystore debug.keystore -alias androiddebugkey -keypass android -storepass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            fi
           fi
+          chmod 644 debug.keystore
+          touch .env
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew

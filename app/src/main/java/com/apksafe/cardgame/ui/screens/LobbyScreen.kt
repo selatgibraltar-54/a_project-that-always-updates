@@ -53,9 +53,12 @@ import com.apksafe.cardgame.ui.theme.SurfaceCard
 import com.apksafe.cardgame.ui.theme.SurfaceDark
 import com.apksafe.cardgame.viewmodel.AuthViewModel
 
+import androidx.compose.material.icons.filled.BarChart
+
 enum class LobbyNavTab {
     ARENA,
     CODEX,
+    DASHBOARD,
     HISTORY
 }
 
@@ -90,7 +93,7 @@ fun LobbyScreen(
                     selected = currentTab == LobbyNavTab.ARENA,
                     onClick = { currentTab = LobbyNavTab.ARENA },
                     icon = { Icon(Icons.Filled.Group, contentDescription = "Lobby Arena") },
-                    label = { Text("Game Lobby") },
+                    label = { Text("Lobby") },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = Color.Black,
                         selectedTextColor = GoldPrimary,
@@ -103,7 +106,20 @@ fun LobbyScreen(
                     selected = currentTab == LobbyNavTab.CODEX,
                     onClick = { currentTab = LobbyNavTab.CODEX },
                     icon = { Icon(Icons.Filled.Book, contentDescription = "Codex") },
-                    label = { Text("Koleksi Kartu") },
+                    label = { Text("Kartu") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = Color.Black,
+                        selectedTextColor = GoldPrimary,
+                        indicatorColor = GoldPrimary,
+                        unselectedIconColor = Color.White.copy(alpha = 0.5f),
+                        unselectedTextColor = Color.White.copy(alpha = 0.5f)
+                    )
+                )
+                NavigationBarItem(
+                    selected = currentTab == LobbyNavTab.DASHBOARD,
+                    onClick = { currentTab = LobbyNavTab.DASHBOARD },
+                    icon = { Icon(Icons.Filled.BarChart, contentDescription = "Dashboard Visualisasi") },
+                    label = { Text("Dashboard") },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = Color.Black,
                         selectedTextColor = GoldPrimary,
@@ -211,6 +227,14 @@ fun LobbyScreen(
 
             LobbyNavTab.CODEX -> {
                 CodexScreen(modifier = Modifier.padding(paddingValues))
+            }
+
+            LobbyNavTab.DASHBOARD -> {
+                DashboardScreen(
+                    authViewModel = authViewModel,
+                    onNavigateToArena = { currentTab = LobbyNavTab.ARENA },
+                    modifier = Modifier.padding(paddingValues)
+                )
             }
 
             LobbyNavTab.HISTORY -> {

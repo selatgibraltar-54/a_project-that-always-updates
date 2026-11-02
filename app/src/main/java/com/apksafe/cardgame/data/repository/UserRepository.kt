@@ -16,6 +16,7 @@ class UserRepository(private val database: CardDatabase) {
     val allHistory: Flow<List<MatchHistoryEntity>> = matchHistoryDao.getAllHistoryFlow()
 
     fun getUserByIdFlow(id: Long): Flow<UserEntity?> = userDao.getUserByIdFlow(id)
+    suspend fun getUserById(id: Long): UserEntity? = userDao.getUserById(id)
 
     fun getExternalUsersFlow(thisDeviceId: String): Flow<List<UserEntity>> = userDao.getExternalUsersFlow(thisDeviceId)
     fun getLocalDeviceUsersFlow(thisDeviceId: String): Flow<List<UserEntity>> = userDao.getLocalDeviceUsersFlow(thisDeviceId)

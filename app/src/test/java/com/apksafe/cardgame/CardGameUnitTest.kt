@@ -52,4 +52,23 @@ class CardGameUnitTest {
         assertEquals(350, user.coins)
         assertEquals(10, user.wins)
     }
+
+    @Test
+    fun testDashboardStatsCalculation() {
+        val wins = 15
+        val losses = 5
+        val total = wins + losses
+        val winRate = (wins.toFloat() / total.toFloat()) * 100f
+        val ratio = wins.toFloat() / losses.toFloat()
+
+        assertEquals(20, total)
+        assertEquals(75.0f, winRate, 0.01f)
+        assertEquals(3.0f, ratio, 0.01f)
+
+        // Test zero losses edge case
+        val perfectWins = 10
+        val zeroLosses = 0
+        val perfectRatio = if (zeroLosses > 0) "${perfectWins / zeroLosses}x" else "MAX"
+        assertEquals("MAX", perfectRatio)
+    }
 }

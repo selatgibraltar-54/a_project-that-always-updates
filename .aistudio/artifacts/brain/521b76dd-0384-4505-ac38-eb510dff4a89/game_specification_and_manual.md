@@ -95,3 +95,21 @@ Ketika seorang pemain berhasil mengalahkan pemain non-bot:
 3. Di HP 1: Masuk ke Game Lobby, tekan **Pindai Lawan** atau **Buat Room (Host)**.
 4. Di HP 2: Tekan **Pindai Lawan** (profil HP 1 akan otomatis muncul) ATAU ketik IP HP 1 pada kolom **Gabung via IP**.
 5. Tekan **Start Battle** untuk memulai pertarungan langsung antar perangkat nyata!
+
+---
+
+## 📊 7. Dashboard Statistik & Visualisasi Rasio Win/Loss (Recharts-Style DataViz)
+Tab **Dashboard** menyajikan analisis performa pemain dengan visualisasi data deklaratif dan animasi dinamis:
+1. **Interactive Win/Loss Donut Chart (Setara Recharts PieChart)**:
+   - Dibuat menggunakan Jetpack Compose `Canvas` dengan transisi sudut `animateFloatAsState`.
+   - Menampilkan irisan kemenangan (Hijau Emerald) dan kekalahan (Merah Crimson) dengan persentase di tengah lingkaran (*Win Rate*).
+   - Legenda interaktif dengan rincian jumlah match dan persentase.
+2. **Bar Rasio Proporsional & Metrik KPI**:
+   - Menghitung **Win Rate (%)**, **W/L Ratio** (misal `3.00x`), **Total Pertandingan**, serta **Total Pergantian Giliran Akibat AFK 4 Menit**.
+3. **Grafik Distribusi Penyelesaian Duel (Setara Recharts BarChart)**:
+   - Visualisasi kondisi pertandingan berakhir: KO (*Penghabisan HP*), AFK Forfeit (*Batas Waktu 4 Menit*), atau Menyerah (*Surrender*).
+4. **Indikator Tren Performa & Riwayat Duel Tersaring**:
+   - Menampilkan urutan 8 pertandingan terakhir dalam bentuk *form badges* ([W] [L]) dan status *win streak*.
+   - Filter interaktif: *Semua*, *Menang*, dan *Kalah* dengan kartu riwayat pertandingan lengkap.
+   - Tombol simulasi cepat (*+ Win*, *+ Loss*) untuk kemudahan evaluasi dan pengujian animasi visualisasi.
+

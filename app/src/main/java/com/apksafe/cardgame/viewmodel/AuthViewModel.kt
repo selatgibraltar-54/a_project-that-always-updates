@@ -89,6 +89,43 @@ class AuthViewModel(private val repository: UserRepository) : ViewModel() {
         _uiState.update { it.copy(currentUser = null, error = null) }
     }
 
+    fun recordDemoMatch(isWin: Boolean) {
+        val user = _uiState.value.currentUser ?: return
+        viewModelScope.launch {
+            val opponentNames = listOf("AeroMaster", "ShadowDuelist", "FlameCaller", "AquaKnight", "VoltTitan")
+            val opponent = opponentNames.random()
+            val rounds = (3..9).random()
+            val afkCount = (0..2).random()
+            val reason = if (afkCount > 0 && (0..1).random() == 1) "AFK_FORFEIT" else "KO"
+            val winner = if (isWin) user.username else opponent
+            val loser = if (isWin) opponent else user.username
+
+            repository.recordMatch(
+                winnerUsername = winner,
+                loserUsername = loser,
+                rounds = rounds,
+                afkSwitchesCount = afkCount,
+                reason = reason
+            )
+
+            // Refresh current user data
+            val updated = repository.getUserById(user.id)
+            if (updated != null) {
+                _uiState.update { it.copy(currentUser = updated) }
+            }
+        }
+    }
+
+    fun refreshCurrentUser() {
+        val user = _uiState.value.currentUser ?: return
+        viewModelScope.launch {
+            val updated = repository.getUserById(user.id)
+            if (updated != null) {
+                _uiState.update { it.copy(currentUser = updated) }
+            }
+        }
+    }
+
     fun clearError() {
         _uiState.update { it.copy(error = null, successMessage = null) }
     }
